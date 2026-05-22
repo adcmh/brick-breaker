@@ -338,6 +338,9 @@ class Game {
     this.lastTime = 0;
     this.lifeLostTimer = 0;       // 失命后的短暂等待
 
+    // 音效
+    this.audio = new AudioManager();
+
     // UI 元素
     this.scoreEl = document.getElementById('scoreDisplay');
     this.livesEl = document.getElementById('livesDisplay');
@@ -355,12 +358,16 @@ class Game {
       if (e.code === 'Space') {
         e.preventDefault();
         if (this.state === 'START') {
+          this.audio.init();
+          this.audio.startBGM();
           this.state = 'PLAYING';
           this.ball.launch();
+          this.audio.playLaunch();
         } else if (this.state === 'GAME_OVER' || this.state === 'WIN') {
           this._restart();
         } else if (this.state === 'PLAYING') {
-          this.ball.launch();    // 允许手动发射
+          this.ball.launch();
+          this.audio.playLaunch();
         }
       }
 
@@ -368,6 +375,15 @@ class Game {
         this.state = 'PAUSED';
       } else if (e.code === 'KeyP' && this.state === 'PAUSED') {
         this.state = 'PLAYING';
+      }
+
+      if (e.code === 'KeyM') {
+        this.audio.toggleMute();
+        const muteEl = document.getElementById('muteDisplay');
+        if (muteEl) {
+          muteEl.textContent = this.audio.muted ? '静音中' : 'M 静音';
+          muteEl.style.color = this.audio.muted ? '#ff4757' : '#888';
+        }
       }
     });
 
@@ -403,10 +419,14 @@ class Game {
     // 点击发射
     this.canvas.addEventListener('click', () => {
       if (this.state === 'START') {
+        this.audio.init();
+        this.audio.startBGM();
         this.state = 'PLAYING';
         this.ball.launch();
+        this.audio.playLaunch();
       } else if (this.state === 'PLAYING') {
         this.ball.launch();
+        this.audio.playLaunch();
       }
     });
   }
@@ -421,6 +441,7 @@ class Game {
     this.brickGrid.generate(this.level);
     this.state = 'PLAYING';
     this.ball.launch();
+    this.audio.startBGM();
   }
 
   // ---- 进入下一关 ----
@@ -428,26 +449,30 @@ class Game {
     const maxLevel = 5;
     if (this.level >= maxLevel) {
       this.state = 'WIN';
+      this.audio.playWin();
       return;
     }
     this.level++;
-    this.ball.speed += 40;                             // 逐关加速
-    this.brickGrid.rows = Math.min(8, this.brickGrid.rows + 1); // 逐关加行
+    this.ball.speed += 40;
+    this.brickGrid.rows = Math.min(8, this.brickGrid.rows + 1);
     this.ball.reset(this.canvas.width, this.canvas.height, this.paddle.pos.y);
     this.paddle.reset(this.canvas.width, this.canvas.height);
     this.brickGrid.generate(this.level);
     this.state = 'PLAYING';
     this.ball.launch();
+    this.audio.playLaunch();
   }
 
   // ---- 失命 ----
   _loseLife() {
     this.lives--;
+    this.audio.playLoseLife();
     if (this.lives <= 0) {
       this.state = 'GAME_OVER';
+      this.audio.playGameOver();
     } else {
       this.state = 'LIFE_LOST';
-      this.lifeLostTimer = 1.2;  // 1.2 秒等待
+      this.lifeLostTimer = 1.2;
     }
   }
 
@@ -489,20 +514,24 @@ class Game {
     const ch = this.canvas.height;
 
     // --- 墙壁碰撞 ---
-    // 左右墙
+    let wallHit = false;
     if (ball.pos.x - ball.radius < 0) {
       ball.pos.x = ball.radius;
       ball.bounceX();
+      wallHit = true;
     } else if (ball.pos.x + ball.radius > cw) {
       ball.pos.x = cw - ball.radius;
       ball.bounceX();
+      wallHit = true;
     }
 
-    // 顶墙
     if (ball.pos.y - ball.radius < 0) {
       ball.pos.y = ball.radius;
       ball.bounceY();
+      wallHit = true;
     }
+
+    if (wallHit) this.audio.playWallBounce();
 
     // 底部：失命
     if (ball.pos.y - ball.radius > ch) {
@@ -522,6 +551,7 @@ class Game {
         ball.pos.y = p.pos.y - ball.radius;
         const hitOffset = p.getHitOffset(ball.pos.x);
         ball.reflectOffPaddle(hitOffset, 60);
+        this.audio.playPaddleBounce(hitOffset);
       }
     }
 
@@ -530,19 +560,22 @@ class Game {
     if (result) {
       const { brick, side } = result;
 
-      // 物理反弹
       if (side === 'top' || side === 'bottom') {
         ball.bounceY();
       } else {
         ball.bounceX();
       }
 
-      // 受击处理
       const destroyed = brick.hit();
       this.score += brick.points;
 
-      if (destroyed && this.brickGrid.allCleared()) {
-        this._nextLevel();
+      if (destroyed) {
+        this.audio.playBrickBreak();
+        if (this.brickGrid.allCleared()) {
+          this._nextLevel();
+        }
+      } else {
+        this.audio.playBrickHit();
       }
     }
   }
